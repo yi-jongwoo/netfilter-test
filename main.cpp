@@ -5,8 +5,14 @@
 #include <linux/types.h>
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
-
+#include <signal.h>
 #include <libnetfilter_queue/libnetfilter_queue.h>
+
+void sigintHandler(int sig)
+{
+	system("iptables -F");
+	exit(0);
+}
 
 /* returns packet id */
 static u_int32_t print_pkt (struct nfq_data *tb)
@@ -80,7 +86,14 @@ int main(int argc, char **argv)
 	int fd;
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
-
+	
+	system("iptables -F");
+	system("iptables -A OUTPUT -j NFQUEUE --queue-num 0");
+	system("sudo iptables -A INPUT -j NFQUEUE --queue-num 0");
+	if (signal(SIGINT, sigintHandler) == SIG_ERR){
+		printf("signal setting error\n");
+		exit(1);
+	}
 	printf("opening library handle\n");
 	h = nfq_open();
 	if (!h) {
@@ -148,7 +161,7 @@ int main(int argc, char **argv)
 
 	printf("closing library handle\n");
 	nfq_close(h);
-
+	system("iptables -F");
 	exit(0);
 }
 

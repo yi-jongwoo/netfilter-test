@@ -14,6 +14,78 @@ void sigintHandler(int sig)
 	exit(0);
 }
 
+#define TOKEN_PASTE(x, y) x##y
+#define CAT(x,y) TOKEN_PASTE(x,y)
+#define ignore_bytes(n) uint8_t CAT(nevermind,__LINE__)[n];
+
+constexpr int is_little_endian(){
+	uint16_t x=1;
+	return *(uint8_t*)&x;
+}
+
+void print_byte(uint8_t x){
+	printf("%x%x",x/16,x%16);
+}
+
+void print_hex(const uint8_t* payload,int len){
+	printf("payload(%d bytes) : ",len);
+	if(len>10)len=10;
+	for(int i=0;i<len;i++)
+		print_byte(payload[i]);
+	printf("\n");
+}
+
+struct tcp_header{
+	uint16_t src;
+	uint16_t dst;
+	ignore_bytes(8)
+	uint8_t header_size_big : 4;
+	uint8_t header_size_little : 4;
+	ignore_bytes(7)
+	uint32_t upper_layer[1];
+	void prn(int len){
+		int header_size=is_little_endian()?header_size_little:header_size_big;
+		printf("TCP port src: %hu dst: %hu\n",ntohs(src),ntohs(dst));
+		print_hex((uint8_t*)(upper_layer+header_size-5),len-header_size*4);
+	}
+}__attribute__((packed));
+
+struct ipv4_addr{
+	uint8_t addr[4];
+	void prn(){
+		printf("%hhu",addr[0]);
+		for(int i=1;i<4;i++)
+			printf(".%hhu",addr[i]);
+	}
+}__attribute__((packed));
+
+struct ipv4_header{
+	uint8_t header_size_little : 4;
+	uint8_t header_size_big : 4;
+	
+	ignore_bytes(1)
+	uint16_t ip_size;
+	ignore_bytes(5)
+	uint8_t protocall;
+	ignore_bytes(2)
+	ipv4_addr src;
+	ipv4_addr dst;
+	uint32_t upper_layer[1];
+	int is_tcp(){
+		return protocall==0x06;
+	}
+	bool prn(){
+		int header_size=is_little_endian()?header_size_little:header_size_big;
+		printf("IPv4 src: ");
+		src.prn();
+		printf(" dst: ");
+		dst.prn();
+		printf("\n");
+		((tcp_header*)(upper_layer+header_size-5))->prn(ntohs(ip_size));
+		return false;
+	}
+}__attribute__((packed));
+
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *tb, void *ddata)
 {
@@ -31,32 +103,15 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 			ntohs(ph->hw_protocol), ph->hook, id);
 	}
 
-	mark = nfq_get_nfmark(tb);
-	if (mark)
-		printf("mark=%u ", mark);
-
-	ifi = nfq_get_indev(tb);
-	if (ifi)
-		printf("indev=%u ", ifi);
-
-	ifi = nfq_get_outdev(tb);
-	if (ifi)
-		printf("outdev=%u ", ifi);
-	ifi = nfq_get_physindev(tb);
-	if (ifi)
-		printf("physindev=%u ", ifi);
-
-	ifi = nfq_get_physoutdev(tb);
-	if (ifi)
-		printf("physoutdev=%u ", ifi);
-
 	ret = nfq_get_payload(tb, &data);
-	if (ret >= 0)
+	bool flag=0;
+	if (ret >= 0){
 		printf("payload_len=%d\n", ret);
-
+		flag=((ipv4_header*)data)->prn();
+	}
 	fputc('\n', stdout);
 	printf("entering callback\n");
-	bool flag=0;
+	
 	return nfq_set_verdict(qh, id, flag?NF_DROP:NF_ACCEPT, 0, NULL);
 }
 

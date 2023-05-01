@@ -14,8 +14,8 @@ void sigintHandler(int sig)
 	exit(0);
 }
 
-/* returns packet id */
-static u_int32_t print_pkt (struct nfq_data *tb)
+static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
+	      struct nfq_data *tb, void *ddata)
 {
 	int id = 0;
 	struct nfqnl_msg_packet_hdr *ph;
@@ -29,16 +29,6 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 		id = ntohl(ph->packet_id);
 		printf("hw_protocol=0x%04x hook=%u id=%u ",
 			ntohs(ph->hw_protocol), ph->hook, id);
-	}
-
-	hwph = nfq_get_packet_hw(tb);
-	if (hwph) {
-		int i, hlen = ntohs(hwph->hw_addrlen);
-
-		printf("hw_src_addr=");
-		for (i = 0; i < hlen-1; i++)
-			printf("%02x:", hwph->hw_addr[i]);
-		printf("%02x ", hwph->hw_addr[hlen-1]);
 	}
 
 	mark = nfq_get_nfmark(tb);
@@ -65,17 +55,9 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 		printf("payload_len=%d\n", ret);
 
 	fputc('\n', stdout);
-
-	return id;
-}
-
-
-static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
-	      struct nfq_data *nfa, void *data)
-{
-	u_int32_t id = print_pkt(nfa);
 	printf("entering callback\n");
-	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	bool flag=0;
+	return nfq_set_verdict(qh, id, flag?NF_DROP:NF_ACCEPT, 0, NULL);
 }
 
 int main(int argc, char **argv)

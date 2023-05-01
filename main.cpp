@@ -1,3 +1,5 @@
+#include "proto_structures.h"
+#include "addr_set.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -47,15 +49,7 @@ struct tcp_header{
 		int header_size=is_little_endian()?header_size_little:header_size_big;
 		printf("TCP port src: %hu dst: %hu\n",ntohs(src),ntohs(dst));
 		print_hex((uint8_t*)(upper_layer+header_size-5),len-header_size*4);
-	}
-}__attribute__((packed));
-
-struct ipv4_addr{
-	uint8_t addr[4];
-	void prn(){
-		printf("%hhu",addr[0]);
-		for(int i=1;i<4;i++)
-			printf(".%hhu",addr[i]);
+		return false;
 	}
 }__attribute__((packed));
 
@@ -76,13 +70,7 @@ struct ipv4_header{
 	}
 	bool prn(){
 		int header_size=is_little_endian()?header_size_little:header_size_big;
-		printf("IPv4 src: ");
-		src.prn();
-		printf(" dst: ");
-		dst.prn();
-		printf("\n");
-		((tcp_header*)(upper_layer+header_size-5))->prn(ntohs(ip_size));
-		return false;
+		return is_tcp&&((tcp_header*)(upper_layer+header_size-5))->prn(ntohs(ip_size));
 	}
 }__attribute__((packed));
 

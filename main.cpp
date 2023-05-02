@@ -28,28 +28,36 @@ constexpr int is_little_endian(){
 void print_byte(uint8_t x){
 	printf("%x%x",x/16,x%16);
 }
-
-void print_hex(const uint8_t* payload,int len){
-	printf("payload(%d bytes) : ",len);
-	if(len>10)len=10;
-	for(int i=0;i<len;i++)
-		print_byte(payload[i]);
-	printf("\n");
+const char* forbidden;
+bool print_hex(const uint8_t* payload,int len){
+	for(int i=0;i+8<len;i++)
+		if(memcmp(payload+i,"\r\nHost: ",8)==0){
+			i+=8;
+			int n=strlen(forbidden);
+			return memcmp(payload+i,forbidden,n)==0;
+		}
+	return false;
 }
 
+struct tcp_port{
+	static const int siz=2;
+	uint16_t num; // network order
+}__attribute__((packed));
+
 struct tcp_header{
-	uint16_t src;
-	uint16_t dst;
+	tcp_port src;
+	tcp_port dst;
 	ignore_bytes(8)
 	uint8_t header_size_big : 4;
 	uint8_t header_size_little : 4;
 	ignore_bytes(7)
 	uint32_t upper_layer[1];
-	void prn(int len){
+	int is_http(){
+		return ntohs(src.num)==80||ntohs(dst.num)==80;
+	}
+	bool prn(int len){
 		int header_size=is_little_endian()?header_size_little:header_size_big;
-		printf("TCP port src: %hu dst: %hu\n",ntohs(src),ntohs(dst));
-		print_hex((uint8_t*)(upper_layer+header_size-5),len-header_size*4);
-		return false;
+		return is_http()&&print_hex((uint8_t*)(upper_layer+header_size-5),len-header_size*4);
 	}
 }__attribute__((packed));
 
@@ -70,7 +78,7 @@ struct ipv4_header{
 	}
 	bool prn(){
 		int header_size=is_little_endian()?header_size_little:header_size_big;
-		return is_tcp&&((tcp_header*)(upper_layer+header_size-5))->prn(ntohs(ip_size));
+		return is_tcp()&&((tcp_header*)(upper_layer+header_size-5))->prn(ntohs(ip_size));
 	}
 }__attribute__((packed));
 
@@ -87,24 +95,29 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	ph = nfq_get_msg_packet_hdr(tb);
 	if (ph) {
 		id = ntohl(ph->packet_id);
-		printf("hw_protocol=0x%04x hook=%u id=%u ",
-			ntohs(ph->hw_protocol), ph->hook, id);
+		//printf("hw_protocol=0x%04x hook=%u id=%u ",
+		//	ntohs(ph->hw_protocol), ph->hook, id);
 	}
 
 	ret = nfq_get_payload(tb, &data);
 	bool flag=0;
 	if (ret >= 0){
-		printf("payload_len=%d\n", ret);
+		//printf("payload_len=%d\n", ret);
 		flag=((ipv4_header*)data)->prn();
 	}
-	fputc('\n', stdout);
-	printf("entering callback\n");
+	//fputc('\n', stdout);
+	//printf("entering callback\n");
 	
 	return nfq_set_verdict(qh, id, flag?NF_DROP:NF_ACCEPT, 0, NULL);
 }
 
 int main(int argc, char **argv)
 {
+	if(argc!=2){
+		printf("u : netfilter-test <string>\n");
+		exit(1);
+	}
+	forbidden=argv[1];
 	struct nfq_handle *h;
 	struct nfq_q_handle *qh;
 	struct nfnl_handle *nh;
@@ -155,7 +168,7 @@ int main(int argc, char **argv)
 
 	for (;;) {
 		if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
-			printf("pkt received\n");
+			//printf("pkt received\n");
 			nfq_handle_packet(h, buf, rv);
 			continue;
 		}

@@ -29,14 +29,17 @@ void print_byte(uint8_t x){
 	printf("%x%x",x/16,x%16);
 }
 const char* forbidden;
-bool print_hex(const uint8_t* payload,int len){
-	for(int i=0;i+8<len;i++)
-		if(memcmp(payload+i,"\r\nHost: ",8)==0){
-			i+=8;
+bool print_hex(const uint8_t* x,int len){
+	const uint8_t* end=x+len;
+	for(;;){
+		while(*x++!='\n');
+		if(x+6>=end)return false;
+		if(*x++=='\r')return false;
+		if(*(int*)x++==':tso'){ // x->st: *
 			int n=strlen(forbidden);
-			return memcmp(payload+i,forbidden,n)==0;
+			return memcmp(x+4,forbidden,n)==0 && x[n+4]=='\r';
 		}
-	return false;
+	}
 }
 
 struct tcp_port{

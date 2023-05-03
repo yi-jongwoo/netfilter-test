@@ -32,7 +32,7 @@ const char* forbidden;
 bool print_hex(const uint8_t* x,int len){
 	const uint8_t* end=x+len;
 	for(;;){
-		while(*x++!='\n');
+		while(x!=end&&*x++!='\n');
 		if(x+6>=end)return false;
 		if(*x++=='\r')return false;
 		if(*(int*)x++==':tso'){ // x->st: *
